@@ -104,7 +104,7 @@ def print_word_popularity(words_dict, size, total_words):
     print_table(match_words_count)
     print()
     
-    print('Number of words in dictionary spoken only once',single_use_word_count)
+    print('Number of words in dictionary spoken only once:',single_use_word_count)
     print()
     
     print('Biggest words in dictionary spoken only once:')
@@ -147,6 +147,8 @@ if __name__ == '__main__':
     rates_per_year = defaultdict(list)
     best_videos_per_year = {}
     sentiment_by_year = defaultdict(list)
+    most_positive_videos = []
+    most_negative_videos = []
     years = set()
     lexicon = set()
     longest_words = defaultdict(list)
@@ -178,7 +180,11 @@ if __name__ == '__main__':
         duration_per_year[year] += end
         if final_start < 60:
             shorts_per_year[year] += 1
-        sentiment_by_year[year].append(getSentiment(p.sentiment[videoId]['time_series']))
+            
+        sentiment = getSentiment(p.sentiment[videoId]['time_series'])
+        most_negative_videos.append((sentiment['neg'],videoId))
+        most_positive_videos.append((sentiment['pos'],videoId))
+        sentiment_by_year[year].append(sentiment)
 
     total_words = 0
     total_duration = 0
@@ -198,6 +204,12 @@ if __name__ == '__main__':
             year, videos_per_year[year], shorts_per_year[year], words_per_year[year], duration_per_year[year]/3600.0, mean(rates_per_year[year]), 
             stdev(rates_per_year[year]), best_videos_per_year[year]['videoId'], best_videos_per_year[year]['viewCount'], 
             sentiment['neg'], sentiment['pos']))
+            
+    print()
+    print('Most Negative videos:')
+    pprint(sorted(most_negative_videos)[-5:])
+    print('Most Positive videos:')
+    pprint(sorted(most_positive_videos)[-5:])
     print()
     print('Total words:',total_words)
     print('Total duration: %.2f hrs' % (total_duration/3600.0) )
