@@ -12,7 +12,7 @@ from collections import defaultdict
 DEFAULT_MODEL_NAME = "gpt-3.5-turbo"
 DEFAULT_WORD_LIMIT = 500
 COMMENTS_FILE_FLUSH_TIME = 600 # secs
-SYSTEM_CONTENT = "Please provide the sentiment analysis of this text. Respond with negativity score from 0 to 100: and positivity score from 0 to 100:"
+SYSTEM_CONTENT = 'Please provide the sentiment analysis of this text. I have replaced profanity like "fuck" and "shit" with "[__]". Respond with negativity score from 0 to 100: and positivity score from 0 to 100:'
 
 with open('open-ai-key.txt') as f:
     API_KEY = f.read()
@@ -31,13 +31,14 @@ def analyze_chunk(chunk):
     
     try:
         res = str(completion.choices[0].message.content)
-        neg, pos = re.findall('score\\s*:\\s*([\\d]+)', res, flags=re.IGNORECASE)
+        neg = re.findall('negativity[^:]*?:\\s*([\\d]+)', res, flags=re.IGNORECASE)[0]
+        pos = re.findall('positivity[^:]*?:\\s*([\\d]+)', res, flags=re.IGNORECASE)[0]
         neg = float(neg)/100
         pos = float(pos)/100
     except:
         print(chunk)
         print(completion)
-        raise
+        return 0,0
         
     if neg < 0.0 or neg > 1.0 or pos < 0.0 or pos > 1.0:
         print(completion)
@@ -46,7 +47,7 @@ def analyze_chunk(chunk):
     return neg, pos
     
 def rank_top_excerpts(text):
-    system_content = "Please provide the sentiment analysis of this text. Respond with 3 of the most positive excerpts: and 3 of most negative excerpts:"
+    system_content = 'Please provide the sentiment analysis of this text. I have replaced profanity like "fuck" and "shit" with "[__]". Respond with 3 of the most positive excerpts: and 3 of most negative excerpts:'
     completion = client.chat.completions.create(
       model=DEFAULT_MODEL_NAME,
       temperature=0.0,
@@ -58,7 +59,6 @@ def rank_top_excerpts(text):
     
     try:
         res = str(completion.choices[0].message.content)
-        #print(res)
         return res
     except:
         print(text)
@@ -122,8 +122,9 @@ class SentimentAnalyzer:
         for caption in data['captions']:
             if not start_time:
                 start_time = caption['start']
-            words += caption['text'].split()
-            word_count += len(caption['text'].split())
+            text = caption['text'].replace('[\u00a0__\u00a0]', '[__]')
+            words += text.split()
+            word_count += len(text.split())
             if len(words) > DEFAULT_WORD_LIMIT:
                 chunks.append((start_time,' '.join(words)))
                 words = []
