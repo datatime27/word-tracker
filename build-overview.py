@@ -9,6 +9,8 @@ from statistics import mean,stdev
 from textstat.textstat import textstatistics
 from optparse import OptionParser
 
+textstats = textstatistics()
+
 def percent(value):
     return '%.2f%%' % (value*100)
 
@@ -38,48 +40,47 @@ def print_word_popularity(words_dict, size, total_words):
     single_use_big_words = []
     match_words_count = []
     histogram_of_syllables = defaultdict(int)
-    textstats = textstatistics()
     profanity = []
     profanity_count = 0
     easy_word_count = 0
     difficult_word_count = 0
     
     for word, refs in words_dict.items():
+        num_instances_of_word = len(refs)
         # Don't count numbers as words
         if re.search('^\\d+$',word):
             continue
             
         if word in words_to_match:
-            match_words_count.append((len(refs), word))
+            match_words_count.append((num_instances_of_word, word))
             
         #Histogram of syllable in the dictionary
         if refs[0].is_in_dictionary:
             syllables = textstats.syllable_count(word)
-            frequency_used = len(refs)
-            histogram_of_syllables[syllables] += frequency_used
+            histogram_of_syllables[syllables] += num_instances_of_word
             
             if textstats.is_difficult_word(word):
-                difficult_words_table.append((len(refs), word))
-                difficult_word_count +=1
+                difficult_words_table.append((num_instances_of_word, word))
+                difficult_word_count += num_instances_of_word
             else:
-                easy_word_count += 1
+                easy_word_count += num_instances_of_word
             
         # Find the number of words in the dictionary used only once
-        if len(refs) == 1 and refs[0].is_in_dictionary:
+        if num_instances_of_word==1 and refs[0].is_in_dictionary:
             single_use_word_count += 1
             if len(word) > 6:
                 single_use_big_words.append((len(word), word))
             
         # Find most common words not in dictionary (proper nouns)
         if not refs[0].is_in_dictionary:
-            non_dictionary_words_table.append((len(refs), word))
+            non_dictionary_words_table.append((num_instances_of_word, word))
             
         # Find most common words
-        all_words_table.append((len(refs), word))
+        all_words_table.append((num_instances_of_word, word))
         
         if word in ('ass','dumbass','jackass','__') or re.search('(shit)|(fuck)', word):
-            profanity.append((len(refs), word))
-            profanity_count += len(refs)
+            profanity.append((num_instances_of_word, word))
+            profanity_count += num_instances_of_word
 
     all_words_table.sort()
     non_dictionary_words_table.sort()
@@ -100,7 +101,7 @@ def print_word_popularity(words_dict, size, total_words):
     print_table(difficult_words_table[-size:])
     print()
 
-    print('Most common match words:')
+    print('Most common custom match words:')
     print_table(match_words_count)
     print()
     
@@ -128,7 +129,7 @@ def print_word_popularity(words_dict, size, total_words):
     print('Total:', profanity_count)
     if profanity_count:
         print('Which is 1 out of', int(total_words/profanity_count))
-    pprint(profanity)
+    print_table(profanity[-size:])
     print()
     
     
@@ -141,6 +142,7 @@ if __name__ == '__main__':
     p.parse(channel_name, cut_off_date='2000-01-01')
     #p.parse('mrbeast',cut_off_date='2000-01-01')
     words_per_year = defaultdict(int)
+    difficult_words_per_year = defaultdict(int)
     duration_per_year = defaultdict(int)
     shorts_per_year = defaultdict(int)
     videos_per_year = defaultdict(int)
@@ -153,6 +155,7 @@ if __name__ == '__main__':
     lexicon = set()
     longest_words = defaultdict(list)
     for videoId, first_ref in p.first_word_in_video.items():
+        if not first_ref: continue
         ref = first_ref
         word_counter = 0
         end = 0
@@ -166,6 +169,8 @@ if __name__ == '__main__':
         while ref:
             word_counter += 1
             words_per_year[year] += 1
+            if textstats.is_difficult_word(ref.word):
+                difficult_words_per_year[year] += 1
             if ref.is_in_dictionary:
                 lexicon.add(ref.word)
                 if len(ref.word) > 6:
@@ -174,10 +179,11 @@ if __name__ == '__main__':
             final_start = max(final_start, ref.start)
             ref = ref.next_ref
 
-        rate = word_counter/(end/60.0)
-        rates_per_year[year].append(rate)
-        #print '%s: %d words %.2f min %.2f words/min' % (videoId, word_counter, end/60.0, rate)
-        duration_per_year[year] += end
+        if end:
+            rate = word_counter/(end/60.0)
+            rates_per_year[year].append(rate)
+            #print '%s: %d words %.2f min %.2f words/min' % (videoId, word_counter, end/60.0, rate)
+            duration_per_year[year] += end
         if final_start < 60:
             shorts_per_year[year] += 1
             
@@ -190,7 +196,8 @@ if __name__ == '__main__':
     total_duration = 0
     total_videos = 0
 
-    print ('year, total videos, shorts, total words, total hrs, speaking rate (avg words/min), speaking rate (stddev), '+
+    print ('year, total videos, shorts, total words, total hrs, difficult words (%), '+
+        'speaking rate (avg words/min), speaking rate (stddev), '+
         'best_video, best_video (views), neg, pos')
 
     for year in sorted(years):
@@ -200,9 +207,12 @@ if __name__ == '__main__':
         
         rate = words_per_year[year]/(duration_per_year[year]/60.0)
         sentiment = getSentiment(sentiment_by_year[year])
-        print ('%d, %d, %d, %d, %.2f, %.2f, %.2f, %s, %d, %g, %g' % (
-            year, videos_per_year[year], shorts_per_year[year], words_per_year[year], duration_per_year[year]/3600.0, mean(rates_per_year[year]), 
-            stdev(rates_per_year[year]), best_videos_per_year[year]['videoId'], best_videos_per_year[year]['viewCount'], 
+        print ('%d, %d, %d, %d, %.2f, %.2f, %.2f, %.2f, %s, %d, %g, %g' % (
+            year, videos_per_year[year], shorts_per_year[year], 
+            words_per_year[year], duration_per_year[year]/3600.0, 
+            difficult_words_per_year[year]/words_per_year[year],
+            mean(rates_per_year[year]), stdev(rates_per_year[year]), 
+            best_videos_per_year[year]['videoId'], best_videos_per_year[year]['viewCount'], 
             sentiment['neg'], sentiment['pos']))
             
     print()
@@ -216,9 +226,11 @@ if __name__ == '__main__':
     print('Total videos:',total_videos)
 
     print ('lexicon_count:',len(lexicon))
+    
+    print()
     longest_length = sorted(longest_words.keys())[-1]
-    print ('longest word length:',longest_length)
-    print ('longest words:')
+    print('longest word length:',longest_length)
+    print(f'longest words:')
     pprint(longest_words[longest_length])
     print()
 
