@@ -6,11 +6,16 @@ from optparse import OptionParser
 
 #skip_phrases = ('logan','paul','be','bee','bees','baby','pppp','pbbb','blah','no','go','mine','beep','yurm')
 skip_phrases = ()
+EXCLUDED_VIDEOS = ['MT-CEo_K2cc']
 class LongestPhrase(captions.Parser):
     def run(self, directory, phrase_length):
         self.parse(directory)
         phrases = defaultdict(list)
         for videoId, first_word in self.first_word_in_video.items():
+            if not first_word:
+                continue
+            if videoId in EXCLUDED_VIDEOS:
+                continue
             #if videoId in('dSDBr0WjrwQ', '97Gh93Daio0', '3TflpIllQHY','BKJy7BFP3Is','b91vrgVY-ZQ','LGzkyNHFMvY'):
             #    continue # skip bee movie, mine video, yurm, blah,logan paul, tom scott
             ref = first_word
@@ -22,8 +27,8 @@ class LongestPhrase(captions.Parser):
             
         top_phrases = []
         for phrase, refs in phrases.items():
-            if len(refs) < 4:
-                continue
+            #if len(refs) < 4:
+            #    continue
             top_phrases.append((len(refs),phrase, refs))
             
         top_phrases.sort(reverse=True)
