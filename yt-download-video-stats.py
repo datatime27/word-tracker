@@ -39,7 +39,7 @@ def prepare_dir(channel_name):
         os.mkdir(outputDir)
     return outputDir
 
-def get_channel_info(channel_name):
+def download_channel_info(channel_name):
     url = 'https://www.youtube.com/@'+channel_name 
     r = requests.get(url)
     
@@ -199,7 +199,7 @@ if __name__ == '__main__':
     (options, args) = parser.parse_args()
     channel_name = args[0]
     
-    channel_info = get_channel_info(channel_name)
+    channel_info = download_channel_info(channel_name)
     output_dir = prepare_dir(channel_name)
     write_channel_info(channel_info, output_dir)
     client = YoutubeConnection(channel_info['channel_id'],output_dir)
