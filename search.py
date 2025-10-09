@@ -2,39 +2,39 @@
 import sys
 import os
 import re
-import captions
 from pprint import pprint
 from optparse import OptionParser
-   
+from captions import Parser, TRANSCRIPTS_DIR
 
-if __name__ == '__main__':
-    parser = OptionParser()
-    (options, args) = parser.parse_args()
+def getAllChannels():
+    return os.listdir(TRANSCRIPTS_DIR)
 
-    channel = args[0]
-    p = captions.Parser()
-    p.parse(args[0])
-    
-    words = args[1].lower()
-    print (words,':')
+def search(channel_name, words):
+    print (f"{channel_name} {words}:")
+    p = Parser()
+    p.parse(channel_name)    
     
     if ' ' not in words: # Single word
-        for ref in p.findWord(words):
-            print(ref.link,ref.text)
-        print()
+        results = p.findWord(words)
+        for ref in results:
+            print(ref.publishedAt, ref.link,ref.text)
+        print(len(results), 'results\n')
     else: # Phrase
-        for ref in p.findWords(words.split()):
-            print(ref.link,ref.text)
-        print()
-    '''
-    print ('"feast.*":')
-    for words in p.reWord('feast.*'):
-        print(words)
-    print()
+        results = p.findWords(words.split())
+        for ref in results:
+            print(ref.publishedAt, ref.link, ref.text)
+        print(len(results), 'results\n')
+
+if __name__ == '__main__':
+    parser = OptionParser()        
+    (options, args) = parser.parse_args()
+
+    channel_name = args[0]
+    words = args[1].lower()
     
-    print ('"feastables":')
-    for ref in p.findWord('feastables'):
-        print(ref.link,ref.text)
-    print()
-    '''   
+    if channel_name == 'all':
+        for channel_name in getAllChannels():
+            search(channel_name, words)
+    else:
+        search(channel_name, words)
     
