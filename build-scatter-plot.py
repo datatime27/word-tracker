@@ -24,7 +24,7 @@ p.parse(channel, cut_off_date='2000-01-01')
 sentiment_by_year = defaultdict(list)
 
 print("# Raw Scatter Plot:")
-print("videoId;title;words-per-min;viewCount;publishedAt;negative;positive")
+print("videoId;words-per-min;viewCount;publishedAt;negative;positive;title")
 for videoId, first_ref in p.first_word_in_video.items():
     ref = first_ref
     year = int(ref.publishedAt.split('-')[0])
@@ -42,7 +42,7 @@ for videoId, first_ref in p.first_word_in_video.items():
     stats = p.video_stats[videoId]
     sentiment = getSentiment(p.sentiment[videoId]['time_series'])
     sentiment_by_year[year].append(sentiment)
-    print ('%s;%s;%.2f;%s;%s;%g;%g' % (videoId, first_ref.title, rate, stats['viewCount'], first_ref.publishedAt, sentiment['neg'], sentiment['pos']))
+    print ('%s;%.2f;%s;%s;%g;%g;%s;' % (videoId, rate, stats['viewCount'], first_ref.publishedAt, sentiment['neg'], sentiment['pos'], first_ref.title))
     #print '%s: %d words %.2f min %.2f words/min views: %s' % (videoId, word_counter, end/60.0, rate, stats)
 
 print()
