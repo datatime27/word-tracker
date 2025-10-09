@@ -5,10 +5,23 @@ import re
 import json
 from collections import defaultdict
 from pprint import pprint
+from concurrent.futures import ProcessPoolExecutor, as_completed
+
+MAX_WORKERS = 8
 
 PUNCTUATION_RE = re.compile('[-;,.\'\"\\!\\?,]')
 DICTIONARY_FILE = 'words_dictionary.json'
 TRANSCRIPTS_DIR = 'transcripts'
+CHANNEL_INFO_FILE_NAME = 'channel_info.json'
+WORD_FREQUENCY_FILE_NAME = 'word_frequency.json'
+PHRASE_FREQUENCY_FILE_NAME = 'phrase_frequency.json'
+EXCLUDED_FILE_LIST = [
+    CHANNEL_INFO_FILE_NAME,
+    WORD_FREQUENCY_FILE_NAME,
+    PHRASE_FREQUENCY_FILE_NAME]
+
+with open(DICTIONARY_FILE) as f:
+    WORDS_DICTIONARY = json.load(f)
 
 class WordRef:
     def __init__(self):
@@ -38,9 +51,81 @@ class WordRef:
             'link': self.link,
             'last_in_sentence': self.last_in_sentence,
             })
+
+def buildIndex(videoId, title, publishedAt, captions):
+    prev_ref = None
+    first_word_in_video = None
+    word_index = defaultdict(list)
+    for caption in captions:
+        text = caption['text']
+        #text = re.sub('\\[.+?\\]','',text) # remove non spoken notation
+        #text = re.sub('\\*.+?\\*','',text) # remove non spoken notation
+        words = text.split()
+        
+        for word in words:
+            last_in_sentence = False
+            if re.search(PUNCTUATION_RE, word):
+                last_in_sentence = True
+                
+            word = re.sub("[\\W]",'',word.lower())
+            if not word:
+                continue
+            ref = WordRef()
+                    
+            ref.word = word
+            ref.start = caption['start']
+            ref.duration = caption['duration']
+            ref.text = caption['text']
+            ref.videoId = videoId
+            ref.title = title
+            ref.publishedAt = publishedAt
+            ref.prev_ref = prev_ref
+            ref.link = 'https://www.youtube.com/watch?v=%s&t=%ds' % (videoId, caption['start'])
+            ref.last_in_sentence = last_in_sentence
+            ref.is_in_dictionary = word in WORDS_DICTIONARY
             
+            if prev_ref:
+                prev_ref.next_ref = ref
+            
+            else: # first ref for this video
+                first_word_in_video = ref
+            
+            word_index[word].append(ref)
+            prev_ref = ref   
+            
+    return first_word_in_video, word_index
+
+def parseFile(filepath, cut_off_date):
+    with open(filepath, 'rb') as f:
+        obj = json.load(f)
+        title = obj['title'].replace('&#39;',"'").encode('utf-8')
+        publishedAt = obj['publishedAt']
+        if cut_off_date and publishedAt < cut_off_date:
+            return {}
+        
+        if 'captions' not in obj:
+            return {}
+            
+        videoId = obj['id']
+        captions = obj['captions']
+        stats = obj['stats']
+        sentiment = {'time_series':[]}
+        if 'sentiment' in obj:
+            sentiment = obj['sentiment']
+            
+        first_word_in_video, word_index = buildIndex(videoId, title, publishedAt, captions)
+
+        return dict(
+            videoId=videoId, 
+            captions=captions, 
+            stats=stats, 
+            sentiment=sentiment, 
+            first_word_in_video=first_word_in_video, 
+            word_index=word_index,
+            )
+
 class Parser:        
-    def parse(self, channel, cut_off_date=None):
+    def __init__(self):
         self.word_index = defaultdict(list)
         self.first_word_in_video = {}
         self.video_lengths = []
@@ -48,80 +133,46 @@ class Parser:
         self.video_stats = {}
         self.sentiment = {}
         self.total_caption_time_secs = 0.0
-        with open(DICTIONARY_FILE) as f:
-            self.words_dictionary = json.load(f)
-        
+    
+    def parse(self, channel, cut_off_date=None):
         directory = os.path.join(TRANSCRIPTS_DIR, channel)
         filenames = os.listdir(directory)
+        print(f"Parsing {len(filenames)} videos")
+
         for filename in filenames:
+            if filename in EXCLUDED_FILE_LIST:
+                continue
             filepath = os.path.join(directory, filename)
             
-            try:
-                with open(filepath, 'rb') as f:
-                    obj = json.load(f)
-                    title = obj['title'].replace('&#39;',"'")
-                    publishedAt = obj['publishedAt']
-                    if cut_off_date and publishedAt < cut_off_date:
-                        continue
-                    self.video_counter += 1
-
-                    #print (self.video_counter,publishedAt, title.encode('utf-8'), filepath)
-
-                    videoId = obj['id']
-                    captions = obj['captions']
-                    self.video_stats[videoId] = obj['stats']
-                    if 'viewCount' not in self.video_stats[videoId]:
-                        self.video_stats[videoId]['viewCount'] = 0
-                    if 'sentiment' in obj:
-                        self.sentiment[videoId] = obj['sentiment']
-                    else:
-                        self.sentiment[videoId] = {'time_series':[]}
-                    self.buildIndex(videoId, title.encode('utf-8'), publishedAt, captions)
+            try:                
+                results = parseFile(filepath, cut_off_date)
+                if not results:
+                    continue
                     
-                    if len(captions) > 10:
-                        length = captions[-1]['start'] + captions[-1]['duration']
-                        self.video_lengths.append((length,videoId))
+                videoId = results['videoId']
+                self.first_word_in_video[videoId] = results['first_word_in_video']
+                    
+                #merge dictionaries
+                for word, refs in results['word_index'].items():
+                    self.word_index[word] += refs
+                    
+                self.video_stats[videoId] = results['stats']
+                if 'viewCount' not in self.video_stats[videoId]:
+                    self.video_stats[videoId]['viewCount'] = 0
+                self.sentiment[videoId] = results['sentiment']
+                
+                if len(results['captions']) > 10:
+                    length = results['captions'][-1]['start'] + results['captions'][-1]['duration']
+                    self.video_lengths.append((length,videoId))
+                    
+                self.video_counter += 1
             except:
                 print('Unable to read file:', filepath)
                 raise
             
         self.video_lengths.sort()
-        #print self.video_lengths
-        #print self.video_counter
-        #print self.total_caption_time_secs
+    
 
-        
-    def buildIndex(self, videoId, title, publishedAt, captions):
-        prev_ref = None
-        for caption in captions:
-            words = caption['text'].split()
-            for word in words:
-                last_in_sentence = False
-                if re.search(PUNCTUATION_RE, word):
-                    last_in_sentence = True
-                    
-                word = re.sub("[\\W]",'',word.lower())
-                if not word:
-                    continue
-                ref = WordRef()
-                ref.word = word
-                ref.start = caption['start']
-                ref.duration = caption['duration']
-                ref.text = caption['text']
-                ref.videoId = videoId
-                ref.title = title
-                ref.publishedAt = publishedAt
-                ref.prev_ref = prev_ref
-                ref.link = 'https://www.youtube.com/watch?v=%s&t=%ds' % (videoId, caption['start'])
-                ref.last_in_sentence = last_in_sentence
-                ref.is_in_dictionary = word in self.words_dictionary
-
-                if prev_ref:
-                    prev_ref.next_ref = ref
-                else: # first ref for this video
-                    self.first_word_in_video[videoId] = ref
-                self.word_index[word].append(ref)
-                prev_ref = ref       
         
     # Search for an exact word and return all references
     def findWord(self, word):
@@ -129,7 +180,7 @@ class Parser:
             print ("'%s' not found" % (word))
             return []
             
-        return sorted(self.word_index[word], key=lambda x: x.link)
+        return sorted(self.word_index[word], key=lambda x: x.publishedAt, reverse=True)
     
     # Expand regex pattern into all of the words that match it
     def reWord(self, pattern):
