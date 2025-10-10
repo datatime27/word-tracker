@@ -5,9 +5,6 @@ import re
 import json
 from collections import defaultdict
 from pprint import pprint
-from concurrent.futures import ProcessPoolExecutor, as_completed
-
-MAX_WORKERS = 8
 
 PUNCTUATION_RE = re.compile('[-;,.\'\"\\!\\?,]')
 DICTIONARY_FILE = 'words_dictionary.json'
