@@ -38,6 +38,8 @@ def calc(channel_name):
     for word, counts in term_frequency.items():
         word_count = counts['word_count']
         video_count = counts['video_count']
+        if options.only and doc_frequency[word] > 1:
+            continue
         if video_count < 4:
             continue
         if options.videos:
@@ -60,6 +62,9 @@ if __name__ == '__main__':
     parser.add_option("--videos",
         action="store_true", dest="videos", default=False,
         help="Use video count instead of word count for Term Frequency.")
+    parser.add_option("--only",
+        action="store_true", dest="only", default=False,
+        help="Only use words with a document frequency of 1.")
     (options, args) = parser.parse_args()
     channel_name = args[0]
     calc(channel_name)
