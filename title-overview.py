@@ -20,11 +20,6 @@ def isShort(obj):
     caption = obj['captions'][-1]
     return caption['start'] + caption['duration'] < 61
 
-def add_phrases(words, phrase_length, view_count, phrases):
-    for i in range(len(words)-phrase_length+1):
-        phrase = ' '.join(words[i:i+phrase_length])
-        phrases[phrase].append(view_count)
-
 def calc(channel_name, cuttoff_date=None):
     print("Calculating",channel_name)
     titles = []
@@ -37,20 +32,30 @@ def calc(channel_name, cuttoff_date=None):
             obj = json.load(f)
             if cuttoff_date and obj['publishedAt'] < cuttoff_date:
                 continue
-            if isShort(obj):
+            try:
+                view_count = int(obj['stats']['viewCount'])
+            except:
+                print(f'Cannot read viewCount from {filepath}')
                 continue
-            view_count = int(obj['stats']['viewCount'])
-            title = obj['title']
-            titles.append((view_count,title))
-            
-    titles.sort(reverse=True)
-    print('Views, title')
-    for i in titles[:20]:
-        print(*i)
-    print()
-    for i in titles[-20:]:
-        print(*i)
+            try:
+                last_caption = obj['captions'][-1]
+            except:
+                print(f'Cannot read captions from {filepath}')
+                continue
+                
+            end_secs = int(last_caption['start'] + last_caption['duration'])
+            minutes, seconds = divmod(end_secs, 60)
+            runtime = f'{minutes}:{seconds:02d}'
 
+            videoId = obj['id']
+            title = obj['title']
+            titles.append((obj['publishedAt'], str(view_count), runtime, videoId, title))
+        
+    titles.sort(reverse=True)
+    print('Date    Views    Runtime    VideoId    Title')
+    for i in titles:
+        print('    '.join(i))
+    print()
 if __name__ == '__main__':
     parser = OptionParser()
     (options, args) = parser.parse_args()
