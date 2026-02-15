@@ -174,7 +174,8 @@ if __name__ == '__main__':
             if ref.is_in_dictionary:
                 lexicon.add(ref.word)
                 if len(ref.word) > 6:
-                    longest_words[len(ref.word)].append(ref.word+' '+ref.link)
+                    syllables = textstats.syllable_count(ref.word)
+                    longest_words[len(ref.word)].append(f'{ref.word} {syllables} syllables {ref.link}')
             end = ref.start + ref.duration
             final_start = max(final_start, ref.start)
             ref = ref.next_ref
@@ -207,14 +208,14 @@ if __name__ == '__main__':
         
         rate = words_per_year[year]/(duration_per_year[year]/60.0)
         sentiment = getSentiment(sentiment_by_year[year])
-        print ('%d, %d, %d, %d, %.2f, %.2f, %.2f, %.2f, %s, %d, %g, %g' % (
-            year, videos_per_year[year], shorts_per_year[year], 
-            words_per_year[year], duration_per_year[year]/3600.0, 
-            difficult_words_per_year[year]/words_per_year[year],
-            mean(rates_per_year[year]), stdev(rates_per_year[year]), 
-            best_videos_per_year[year]['videoId'], best_videos_per_year[year]['viewCount'], 
-            sentiment['neg'], sentiment['pos']))
-            
+        print(
+            f"{year}, {videos_per_year[year]}, {shorts_per_year[year]}, {words_per_year[year]}, "
+            f"{duration_per_year[year] / 3600.0:.2f}, "
+            f"{difficult_words_per_year[year] / words_per_year[year]:.2f}, "
+            f"{mean(rates_per_year[year]):.2f}, {stdev(rates_per_year[year]):.2f}, "
+            f"{best_videos_per_year[year]['videoId']}, {best_videos_per_year[year]['viewCount']}, "
+            f"{sentiment['neg']:.6g}, {sentiment['pos']:.6g}"
+        )            
     print()
     print('Most Negative videos:')
     pprint(sorted(most_negative_videos)[-5:])
@@ -231,7 +232,7 @@ if __name__ == '__main__':
     longest_length = sorted(longest_words.keys())[-1]
     print('longest word length:',longest_length)
     print(f'longest words:')
-    pprint(longest_words[longest_length])
+    print('\n'.join(longest_words[longest_length]))
     print()
 
     print_word_popularity(p.word_index, 10,total_words=total_words)
