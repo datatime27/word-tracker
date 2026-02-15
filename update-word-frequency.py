@@ -7,7 +7,7 @@ import re
 import json
 import datetime
 import time
-from captions import TRANSCRIPTS_DIR, WORD_FREQUENCY_FILE_NAME, EXCLUDED_FILE_LIST
+from captions import parseHTML, TRANSCRIPTS_DIR, WORD_FREQUENCY_FILE_NAME, EXCLUDED_FILE_LIST
 from pprint import pprint
 from optparse import OptionParser
 from collections import defaultdict
@@ -50,14 +50,18 @@ def update(channel_name):
                 obj = json.load(f)
                 words_set = set()
                 total_videos += 1
+                if 'captions' not in obj:
+                    continue
                 for caption in obj['captions']:
-                    for word in caption['text'].split():
-                        word = re.sub("[\\W]",'',word.lower())
-                        if not word:
-                            continue
-                        words_set.add(word)
-                        word_frequency[word]['word_count'] += 1
-                        total_words += 1
+                    segments = parseHTML(caption['text'])
+                    for html,text in segments:
+                        for word in text.split():
+                            word = re.sub("[\\W]",'',word.lower())
+                            if not word:
+                                continue
+                            words_set.add(word)
+                            word_frequency[word]['word_count'] += 1
+                            total_words += 1
                     
                 for word in words_set:
                     word = re.sub("[\\W]",'',word.lower())
