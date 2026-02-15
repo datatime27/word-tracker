@@ -3,6 +3,7 @@ import sys
 import os
 import re
 import json
+from html import unescape
 from collections import defaultdict
 from pprint import pprint
 
@@ -33,6 +34,7 @@ class WordRef:
         self.next_ref = None
         self.link = None
         self.last_in_sentence = False
+        self.html = None
 
     def __str__(self):
         return self.__repr__()
@@ -47,49 +49,86 @@ class WordRef:
             'publishedAt' : self.publishedAt,
             'link': self.link,
             'last_in_sentence': self.last_in_sentence,
+            'html': self.html
             })
+
+SPECIAL_HTML_EXCEPTIONS = {
+'<i>': '',
+'</i>': '',
+}
+
+def parseHTML(raw_text):
+    raw_text = raw_text.replace('(bleep)', '[__]')
+            
+    html_pattern = re.compile(r'(<([a-zA-Z][\w-]*)(?:\s+[^>]*)?>)(.*?)(</\2>|$)', re.DOTALL)
+    results = []
+    pos = 0
+
+    for m in html_pattern.finditer(raw_text):
+        if m.start() > pos:
+            results.append((None, unescape(raw_text[pos:m.start()].strip())))
+        html_tag = m.group(1)
+        inner_text = m.group(3).strip()
+        for search,replace in SPECIAL_HTML_EXCEPTIONS.items():
+            inner_text = inner_text.replace(search,replace)
+        results.append((html_tag, unescape(inner_text)))
+        pos = m.end()
+
+    if pos < len(raw_text):
+        results.append((None, unescape(raw_text[pos:].strip())))
+
+    return [r for r in results if r[1]]
+
+
 
 def buildIndex(videoId, title, publishedAt, captions):
     prev_ref = None
     first_word_in_video = None
+    segments = []
     word_index = defaultdict(list)
     for caption in captions:
         text = caption['text']
         #text = re.sub('\\[.+?\\]','',text) # remove non spoken notation
         #text = re.sub('\\*.+?\\*','',text) # remove non spoken notation
-        words = text.split()
-        
-        for word in words:
-            last_in_sentence = False
-            if re.search(PUNCTUATION_RE, word):
-                last_in_sentence = True
-                
-            word = re.sub("[\\W]",'',word.lower())
-            if not word:
-                continue
-            ref = WordRef()
+
+        for html,text in parseHTML(text):
+            segments.append((html,text))
+            words = text.split()
+            
+            for word in words:
+                last_in_sentence = False
+                if re.search(PUNCTUATION_RE, word):
+                    last_in_sentence = True
                     
-            ref.word = word
-            ref.start = caption['start']
-            ref.duration = caption['duration']
-            ref.text = caption['text']
-            ref.videoId = videoId
-            ref.title = title
-            ref.publishedAt = publishedAt
-            ref.prev_ref = prev_ref
-            ref.link = 'https://www.youtube.com/watch?v=%s&t=%ds' % (videoId, caption['start'])
-            ref.last_in_sentence = last_in_sentence
-            ref.is_in_dictionary = word in WORDS_DICTIONARY
+                word = re.sub("[\\W]",'',word.lower())
+                if not word:
+                    continue
+                ref = WordRef()
+                        
+                ref.word = word
+                ref.start = caption['start']
+                ref.duration = caption['duration']
+                ref.text = caption['text']
+                ref.deformatted_text = text
+                ref.videoId = videoId
+                ref.title = title
+                ref.publishedAt = publishedAt
+                ref.prev_ref = prev_ref
+                ref.link = 'https://www.youtube.com/watch?v=%s&t=%ds' % (videoId, caption['start'])
+                ref.last_in_sentence = last_in_sentence
+                ref.is_in_dictionary = word in WORDS_DICTIONARY
+                ref.html = html
+                
+                if prev_ref:
+                    prev_ref.next_ref = ref
+                
+                else: # first ref for this video
+                    first_word_in_video = ref
+                
+                word_index[word].append(ref)
+                prev_ref = ref   
             
-            if prev_ref:
-                prev_ref.next_ref = ref
-            
-            else: # first ref for this video
-                first_word_in_video = ref
-            
-            word_index[word].append(ref)
-            prev_ref = ref   
-            
+    first_word_in_video.segments = segments
     return first_word_in_video, word_index
 
 def parseFile(filepath, cut_off_date):
@@ -105,6 +144,8 @@ def parseFile(filepath, cut_off_date):
             
         videoId = obj['id']
         captions = obj['captions']
+        if not captions:
+            return {}
         stats = obj['stats']
         sentiment = {'time_series':[]}
         if 'sentiment' in obj:
@@ -134,7 +175,7 @@ class Parser:
     def parse(self, channel, cut_off_date=None):
         directory = os.path.join(TRANSCRIPTS_DIR, channel)
         filenames = os.listdir(directory)
-        print(f"Parsing {len(filenames)} videos")
+        #print(f"Parsing {len(filenames)} videos")
 
         for filename in filenames:
             if filename in EXCLUDED_FILE_LIST:
@@ -168,16 +209,16 @@ class Parser:
                 raise
             
         self.video_lengths.sort()
-    
+        return len(filenames)
 
         
     # Search for an exact word and return all references
     def findWord(self, word):
         if word not in self.word_index:
-            print ("'%s' not found" % (word))
+            #print ("'%s' not found" % (word))
             return []
             
-        return sorted(self.word_index[word], key=lambda x: x.publishedAt, reverse=True)
+        return sorted(self.word_index[word], key=lambda x: (x.publishedAt, x.start), reverse=True)
     
     # Expand regex pattern into all of the words that match it
     def reWord(self, pattern):
@@ -193,7 +234,7 @@ class Parser:
     def findWords(self, words, only_last_in_sentence=False):
         first_word = words[0].lower()
         if first_word not in self.word_index:
-            print ("'%s' not found" % (first_word))
+            #print ("'%s' not found" % (first_word))
             return []
             
         matches = {}
@@ -203,8 +244,8 @@ class Parser:
                 id = (ref.videoId,ref.start)
                 matches[id] = ref
                 
-        return list(matches.values())
-        
+        return sorted(list(matches.values()), key=lambda x: (x.publishedAt, x.start), reverse=True)
+
     def matchNextWords(self, ref, words, only_last_in_sentence):
         for word in words:
             word = word.lower()
