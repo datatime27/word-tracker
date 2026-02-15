@@ -17,6 +17,8 @@ import numpy
 BATCH_SIZE = 100
 
 def isShort(obj):
+    if len(obj['captions']) == 0:
+        return True
     caption = obj['captions'][-1]
     return caption['start'] + caption['duration'] < 60
 
@@ -42,12 +44,16 @@ def calc(channel_name, cuttoff_date=None):
                 continue
             if isShort(obj):
                 continue
-            view_count = int(obj['stats']['viewCount'])
+            try:
+                view_count = int(obj['stats']['viewCount'])
+            except:
+                print(f'Cannot read viewCount from {filepath}')
+                continue
             title = obj['title']
             words = title.split()
             add_phrases(words, 2, view_count, phrases)
-            #add_phrases(words, 3, view_count, phrases)
-            #add_phrases(words, 4, view_count, phrases)
+            add_phrases(words, 3, view_count, phrases)
+            add_phrases(words, 4, view_count, phrases)
             
             length_map[len(words)].append(view_count)
             if '?' in title:
@@ -71,30 +77,31 @@ def calc(channel_name, cuttoff_date=None):
             continue
         word_scores.append((int(numpy.mean(l)), len(l), word))
         
+    
     for phrase,l in phrases.items():
         if len(l) < 2:
             continue
         word_scores.append((int(numpy.mean(l)), len(l), phrase))
-        
+    
   
     word_scores.sort(reverse=True)
-    print('View, num of titles, word')
-    for i in word_scores[:20]:
-        print (*i)
+    print('Ave Views; Num of Titles; Phrase')
+    for views, titles, phrase in word_scores[:20]:
+        print (f'{views}; {titles}; {phrase}')
     print()
     
     title_lengths = []
     for word_count,l in length_map.items():
         title_lengths.append((word_count, int(numpy.mean(l)), len(l)))
     title_lengths.sort()
-    print('title length, average view count, num of titles, ')
-    for i in title_lengths:
-        print (*i)
+    print('title length; average view count; num of titles')
+    for length, views, titles in title_lengths:
+        print (f'{length}; {views}; {titles}')
     print()
 
-    print('punctuation, average view count, num of titles, ')
+    print('punctuation; average view count; num of titles')
     for punctuation,l in punctuation_map.items():
-        print(punctuation, int(numpy.mean(l)), len(l))
+        print(f'{punctuation}; {int(numpy.mean(l))}; {len(l)}')
     print()
 
 if __name__ == '__main__':
