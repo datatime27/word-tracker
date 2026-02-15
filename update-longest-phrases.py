@@ -1,7 +1,7 @@
 import os
 import sys
 import re
-from captions import TRANSCRIPTS_DIR, PHRASE_FREQUENCY_FILE_NAME, EXCLUDED_FILE_LIST
+from captions import parseHTML, TRANSCRIPTS_DIR, PHRASE_FREQUENCY_FILE_NAME, EXCLUDED_FILE_LIST
 import json
 import copy
 import traceback
@@ -33,12 +33,18 @@ def readWordsFromFile(filepath):
         words = []
         if 'captions' not in obj:
             return words
+            
         for caption in obj['captions']:
-            for word in caption['text'].split():
-                word = re.sub("[\\W]",'',word.lower())
-                if not word:
-                    continue
-                words.append(word)
+            segments = parseHTML(caption['text'])
+            # Skip weird color coding used on Jet Lag used on Nebula Ad Read.
+            if len(segments) > 6:
+                continue
+            for html,text in segments:
+                for word in text.split():
+                    word = re.sub("[\\W]",'',word.lower())
+                    if not word:
+                        continue
+                    words.append(word)
     return words
 
 def processFile(filepath):
@@ -69,6 +75,8 @@ def updateChannel(channel_name):
     phrases = defaultdict(int)
     total_videos = 0
     total_words = 0
+    #for filepath in filepaths:
+    #        (result, word_count) = processFile(filepath)
     with concurrent.futures.ProcessPoolExecutor(max_workers=MAX_WORKERS) as executor:
         results = executor.map(processFile, filepaths)
         for (result, word_count) in results:
@@ -140,9 +148,6 @@ if __name__ == '__main__':
         channel_names = args
         
     for channel_name in channel_names:
-        if channel_name in EXCLUDED_CHANNELS:
+        if channel_name in EXCLUDED_FILE_LIST:
             continue
         processChannel(channel_name)
-    #with concurrent.futures.ProcessPoolExecutor(max_workers=MAX_WORKERS) as executor:
-    #    process_args = [(channel_name, options.force) for channel_name in channel_names]
-    #    results = executor.map(processChannel, process_args)
