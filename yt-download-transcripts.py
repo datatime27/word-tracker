@@ -139,6 +139,7 @@ class TranscriptDownloader:
     def fetch_captions(self, counter, videoId):
         captions = []
         #srt = YouTubeTranscriptApi.get_transcript(videoId,languages=['en', 'en-US'])
+        print(f"Downloading {videoId}")
         transcript = self.ytt_api.fetch(videoId,preserve_formatting=True)
         for segment in transcript:
             captions.append({

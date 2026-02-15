@@ -146,15 +146,18 @@ class YoutubeConnection:
                 publishedAfter =  publishedBefore - datetime.timedelta(days=365)
                 publishedBefore = publishedBefore.isoformat()+'Z'
                 publishedAfter = publishedAfter.isoformat()+'Z'
-                stats = self.api.videos().list(
+                metadata = self.api.videos().list(
                     id=search_result['id']['videoId'],
                     part="snippet,statistics",
-                ).execute()['items'][0]['statistics']
-                already_downloaded = self.process_video(counter,search_result,stats)
+                ).execute()['items'][0]
+                
+                already_downloaded = self.process_video(counter,search_result,metadata)
                 if already_downloaded:
-                    if options.check_all: # Keep going to check that all videos are downloaded.
+                    # Keep going to check that all videos are downloaded.
+                    if options.check_all or options.update: 
                         continue
-                    else: # Stop: we've now downloaded all new vidoes since last download.
+                    # Stop: we've now downloaded all new vidoes since last download.
+                    else: 
                         return
                 time.sleep(0.001)
                 counter+=1
@@ -163,17 +166,38 @@ class YoutubeConnection:
             if not search_results['items']:
                 break
                 
-    def process_video(self, counter, item, stats):
+    def process_video(self, counter, item, metadata):
         videoId = str(item['id']['videoId'])
         title =  item['snippet']['title']
         publishedAt = item['snippet']['publishedAt']
         img = item['snippet']['thumbnails']['default']['url']
-
+        stats = metadata['statistics']
+        description = metadata["snippet"]['description']
+        
         filepath = os.path.join(self.output_dir, videoId+'.json')
-        # We are all caught up
         if os.path.exists(filepath):
-            print(filepath + ' already exists')
-            return True
+            # Load file, update stats, write it back out
+            if options.update:
+                if 'viewCount' not in stats:
+                    print(f'Cannot update {videoId} - There is no viewCount on YouTube')
+                    return True
+                with open(filepath, 'r', encoding='utf-8') as f:
+                    obj = json.load(f)
+                    
+                obj['title'] = title
+                obj['img'] = img
+                obj['stats'] = stats
+                obj['description'] = description
+                
+                with open(filepath, 'w') as f:
+                    json.dump(obj,f,indent=4)
+                print(filepath + ' updated')
+                return True
+
+            # We are all caught up
+            else:
+                print(filepath + ' already exists')
+                return True
         
         obj = {
             'id': videoId,
@@ -181,6 +205,7 @@ class YoutubeConnection:
             'publishedAt': publishedAt,
             'img': img,
             'stats': stats,
+            'description': description,
         }
 
         with open(filepath, 'w') as f:
@@ -193,6 +218,9 @@ if __name__ == '__main__':
     parser.add_option("--all",
                   action="store_true", dest="check_all", default=False,
                   help="Check that all videos have been downloaded - Default will only download new videos.")
+    parser.add_option("--update",
+                  action="store_true", dest="update", default=False,
+                  help="Download all videos but only update their stats.")
     parser.add_option("--resume",
                   action="store_true", dest="resume", default=False,
                   help="Resume download from where we last left off.")
