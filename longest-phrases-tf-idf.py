@@ -16,6 +16,7 @@ from captions import TRANSCRIPTS_DIR, CHANNEL_INFO_FILE_NAME, PHRASE_FREQUENCY_F
 NO_MATCH = 0
 PREFER_FIRST = 1
 PREFER_SECOND = 2
+MAX_PRINTOUT = 100
 
 def compare_strings(a, b):
     if a in b:
@@ -24,7 +25,15 @@ def compare_strings(a, b):
         return PREFER_FIRST
     else:
         return NO_MATCH
-
+    
+def is_phrase_repeated(phrase, previous_phrases):
+    for previous_phrase in previous_phrases:
+        if phrase in previous_phrase:
+            return True
+        if previous_phrase in phrase:
+            return True
+    return False
+    
 def calc(channel_name):
     print("Calculating",channel_name)
     doc_frequency = defaultdict(int)
@@ -55,14 +64,27 @@ def calc(channel_name):
         tf_idf.append((score, phrase, phrase_count, '%.6f' % (tf), doc_frequency[phrase], '%.6f' % (df)))
   
     tf_idf.sort(reverse=True)
-    print("score, phrase, phrase_count, tf, num docs, df")
-    for score, phrase, phrase_count, tf, num_docs, df in tf_idf[:100]:
-        print (f"{score}, {phrase}, {phrase_count}, {tf}, {num_docs}, {df}")
+    previous_phrases = []
+    print("score, is_repeat, phrase, phrase_count, tf, num docs, df")
+    for score, phrase, phrase_count, tf, num_docs, df in tf_idf[:MAX_PRINTOUT]:
+        is_repeat = is_phrase_repeated(phrase, previous_phrases)
+        print (f'{score}, {is_repeat}, "{phrase}", {phrase_count}, {tf}, {num_docs}, {df}')
+        previous_phrases.append(phrase)
+        
+    # Find specific phrase if possible
+    if options.phrase:
+        for index, (score, phrase, phrase_count, tf, num_docs, df) in enumerate(tf_idf):
+            if phrase == options.phrase:
+                print (f"Index: {index} is {score}, '{phrase}', {phrase_count}, {tf}, {num_docs}, {df}")
+
     print(f"{channel_name} total_keys: {total_keys}")
     print("Total channels:",total_docs)
 
 if __name__ == '__main__':
     parser = OptionParser()
+    parser.add_option("--phrase",
+        dest="phrase", default=None,
+        help="Look for this specific phrase.")
     (options, args) = parser.parse_args()
     channel_name = args[0]
     calc(channel_name)
